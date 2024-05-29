@@ -1,0 +1,13 @@
+[package]
+name = "popup-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.76"
+
+[dependencies]
+blight = "0.7.1"
+eframe = "0.27.2"
+env_logger = { version = "0.10", default-features = false, features = [
+    "auto-color",
+    "humantime",
+] }
