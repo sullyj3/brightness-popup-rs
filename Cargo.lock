@@ -2339,6 +2339,7 @@ dependencies = [
  "blight",
  "eframe",
  "env_logger",
+ "tokio",
 ]
 
 [[package]]

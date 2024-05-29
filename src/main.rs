@@ -1,31 +1,40 @@
+use async_scoped;
+use blight::{self, BlResult};
 use eframe::egui;
 use egui::ViewportBuilder;
-use blight::{self, BlResult};
+use tokio;
 
-fn main() -> Result<(), eframe::Error> {
-    let window_builder_hook = Box::new(|builder: ViewportBuilder| {
-        builder
-            .with_window_type(egui::X11WindowType::Dialog)
-            // .with_resizable(false)
-            .with_decorations(false)
-    });
+#[tokio::main]
+async fn main() {
+    brightness_slider().await;
+}
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([15.0, 130.0]),
-        window_builder: Some(window_builder_hook),
-        ..Default::default()
-    };
+async fn background_thread() {
+    println!("Hello from the background thread!");
+}
 
-    let Ok(device) = blight::Device::new(None) else {
-        panic!("Failed to get backlight device");
-    };
+async fn brightness_slider() {
+    let app = BrightnessApp::default();
 
-    let current_brightness = device.current_percent().round();
+    let current_brightness = app.device.current_percent().round();
     println!("Initial brightness: {}", current_brightness);
 
-    let initial_state: Box<BrightnessApp> = Box::new(BrightnessApp::new(device));
+    let ((), _outputs) = async_scoped::TokioScope::scope_and_block(|s| {
+        let window_builder_hook = Box::new(|builder: ViewportBuilder| {
+            builder
+                .with_window_type(egui::X11WindowType::Dialog)
+                .with_decorations(false)
+        });
 
-    eframe::run_native("Brightness", options, Box::new(|_cc| initial_state))
+        let options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default().with_inner_size([15.0, 130.0]),
+            window_builder: Some(window_builder_hook),
+            ..Default::default()
+        };
+
+        s.spawn(background_thread());
+        eframe::run_native("Brightness", options, Box::new(|_cc| Box::new(app))).unwrap();
+    });
 }
 
 #[derive(Debug)]
@@ -36,14 +45,6 @@ struct BrightnessApp {
 }
 
 impl BrightnessApp {
-    fn new(device: blight::Device) -> Self {
-        let target_brightness = device.current_percent() as u8;
-        Self {
-            device,
-            target_brightness,
-        }
-    }
-
     // we use this stateful style because the egui slider takes a mutable reference
     // to control, as opposed to providing a callback or event handler
     fn write_brightness_to_device(&mut self) -> BlResult<()> {
@@ -54,16 +55,17 @@ impl BrightnessApp {
     }
 
     fn add_target_brightness(&mut self, delta: i16) {
-        self.target_brightness = (self.target_brightness as i16 + delta)
-            .clamp(0, 100) as u8;
+        self.target_brightness = (self.target_brightness as i16 + delta).clamp(0, 100) as u8;
     }
 
     fn handle_input(&mut self, ctx: &egui::Context) {
-        let quit =
-            ctx.input(|i| i.key_pressed(egui::Key::Q) || i.key_pressed(egui::Key::Escape));
+        let quit = ctx.input(|i| i.key_pressed(egui::Key::Q) || i.key_pressed(egui::Key::Escape));
         if quit {
             self.device.reload();
-            println!("Final brightness: {}", self.device.current_percent().round());
+            println!(
+                "Final brightness: {}",
+                self.device.current_percent().round()
+            );
             std::process::exit(0)
         }
 
@@ -81,6 +83,17 @@ impl BrightnessApp {
         }
         if ctx.input(|i| i.key_pressed(egui::Key::PageDown)) {
             self.add_target_brightness(-20);
+        }
+    }
+}
+
+impl Default for BrightnessApp {
+    fn default() -> Self {
+        let device = blight::Device::new(None).expect("Failed to get backlight device");
+        let target_brightness = device.current_percent() as u8;
+        Self {
+            device,
+            target_brightness,
         }
     }
 }
