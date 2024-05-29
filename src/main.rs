@@ -2,12 +2,51 @@ use async_scoped;
 use blight;
 use eframe::egui;
 use egui::ViewportBuilder;
+use fs2::FileExt;
+use std::fs::File;
+use std::io::Result;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use tokio;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{UnixListener, UnixStream};
+use dirs;
+
+const PROG_NAME: &str = "brightness-slider";
 
 #[tokio::main]
-async fn main() {
-    brightness_slider().await;
+async fn main() -> Result<()> {
+    let runtime_dir = dirs::runtime_dir()
+            .expect("Failed to get runtime dir")
+            .join(PROG_NAME);
+
+    std::fs::create_dir_all(&runtime_dir)?;
+
+    let socket_path = runtime_dir.join("brightness-slider.sock");
+    let lock_path = runtime_dir.join("brightness-slider.lock");
+    let lock_file = File::create(lock_path)?;
+
+    match lock_file.try_lock_exclusive() {
+        Ok(_) => {
+            println!("Lock acquired");
+            brightness_slider(socket_path).await;
+        }
+        Err(_) => {
+            println!("Another instance is already running.");
+            println!("Starting client");
+            brightness_slider_client(&socket_path).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn brightness_slider_client(socket_path: &PathBuf) -> Result<()> {
+    let mut client = UnixStream::connect(socket_path).await?;
+
+    client.write_all(b"ping").await?;
+
+    Ok(())
 }
 
 fn write_brightness_to_device(
@@ -20,22 +59,41 @@ fn write_brightness_to_device(
     device.write_value(value)
 }
 
-async fn bg_thread(rx: mpsc::Receiver<u8>, mut device: blight::Device) {
+async fn device_write_thread(rx: mpsc::Receiver<u8>, mut device: blight::Device) -> Result<()> {
     loop {
         let Ok(target_brightness) = rx.recv() else {
             break;
         };
-        println!("Target brightness is {}", target_brightness);
         write_brightness_to_device(&mut device, target_brightness)
             .expect("Failed to write brightness");
     }
 
     // gui has closed, report final brightness and exit
     device.reload();
-    println!("Final brightness: {}", device.current_percent().round());
+    Ok(())
 }
 
-async fn brightness_slider() {
+async fn server_thread(socket_path: &PathBuf) -> Result<()> {
+    println!("Starting server thread");
+
+    // Ensure no stale socket file
+    match std::fs::remove_file(socket_path) {
+        Ok(_) => {},
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {},
+        Err(e) => return Err(e),
+    }
+
+    let listener = UnixListener::bind(socket_path)?;
+    println!("Listening on socket: {}", socket_path.display());
+    loop {
+        let (mut stream, _addr) = listener.accept().await?;
+        let mut recv_buf = String::new();
+        stream.read_to_string(&mut recv_buf).await?;
+        println!("Received command from client: {}", recv_buf);
+    }
+}
+
+async fn brightness_slider(socket_path: PathBuf) {
     let ((), _outputs) = async_scoped::TokioScope::scope_and_block(|s| {
         let window_options = eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default().with_inner_size([15.0, 130.0]),
@@ -63,7 +121,10 @@ async fn brightness_slider() {
         // another comment mentions that eventuals are like FRP signals
         // see also https://lib.rs/crates/futures-signals (more stars + more recent commits)
         let (tx_brightness, rx_brightness) = mpsc::channel();
-        s.spawn(bg_thread(rx_brightness, device));
+
+        // TODO ensure these are cancelled when the egui window is closed
+        s.spawn(device_write_thread(rx_brightness, device));
+        s.spawn(server_thread(&socket_path));
 
         let app = BrightnessApp::new(tx_brightness, curr_brightness);
         eframe::run_native("Brightness", window_options, Box::new(|_cc| Box::new(app))).unwrap();
