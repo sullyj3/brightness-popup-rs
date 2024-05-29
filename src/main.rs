@@ -10,8 +10,6 @@ async fn main() {
     brightness_slider().await;
 }
 
-// we use this stateful style because the egui slider takes a mutable reference
-// to control, as opposed to providing a callback or event handler
 fn write_brightness_to_device(
     device: &mut blight::Device,
     target_brightness: u8,
@@ -53,6 +51,17 @@ async fn brightness_slider() {
         let curr_brightness: u8 = device.current_percent().round() as u8;
         println!("Initial brightness: {}", curr_brightness);
 
+        // TODO: consider using tokio::sync::watch::channel.
+        // This drops all values except the most recent one, which is what we want.
+        // https://docs.rs/tokio/latest/tokio/sync/watch/fn.channel.html
+        // another possibility is `Eventual`
+        // https://docs.rs/crate/eventuals/0.6.7
+        //
+        // comparison of watch and eventual from the author of eventual:
+        // https://www.reddit.com/r/rust/comments/oo917a/comment/h6ygv60/
+        //
+        // another comment mentions that eventuals are like FRP signals
+        // see also https://lib.rs/crates/futures-signals (more stars + more recent commits)
         let (tx_brightness, rx_brightness) = mpsc::channel();
         s.spawn(bg_thread(rx_brightness, device));
 
@@ -108,6 +117,7 @@ impl eframe::App for BrightnessApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.add(
+                // todo: try Slider::from_get_set
                 egui::Slider::new(&mut self.target_brightness, 0..=100)
                     .show_value(false)
                     .vertical(),
