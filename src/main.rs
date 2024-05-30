@@ -75,7 +75,7 @@ async fn device_write_thread(
     Ok(())
 }
 
-async fn server_thread(socket_path: &PathBuf) -> Result<()> {
+async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -> Result<()> {
     println!("Starting server thread");
 
     // Ensure no stale socket file
@@ -92,6 +92,12 @@ async fn server_thread(socket_path: &PathBuf) -> Result<()> {
         let mut recv_buf = String::new();
         stream.read_to_string(&mut recv_buf).await?;
         println!("Received command from client: {}", recv_buf);
+        match recv_buf.as_str() {
+            "ping" => {
+                brightness.set(100);
+            },
+            _ => {}
+        }
     }
 }
 
@@ -105,9 +111,9 @@ async fn brightness_slider(socket_path: PathBuf) {
         let brightness = signal::Mutable::new(curr_brightness);
 
         s.spawn_cancellable(device_write_thread(brightness.signal(), device), || Ok(()));
-        s.spawn_cancellable(server_thread(&socket_path), || Ok(()));
+        s.spawn_cancellable(server_thread(&socket_path, brightness.clone()), || Ok(()));
 
-        run_gui(brightness);
+        run_gui(brightness.clone());
 
         s.cancel();
     });
