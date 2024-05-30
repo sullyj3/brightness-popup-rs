@@ -45,6 +45,7 @@ async fn brightness_slider_client(socket_path: &PathBuf) -> Result<()> {
     let mut client = UnixStream::connect(socket_path).await?;
 
     client.write_all(b"ping").await?;
+    println!("Sent ping to server. Exiting.");
 
     Ok(())
 }
@@ -96,15 +97,6 @@ async fn server_thread(socket_path: &PathBuf) -> Result<()> {
 
 async fn brightness_slider(socket_path: PathBuf) {
     let ((), _outputs) = async_scoped::TokioScope::scope_and_block(|s| {
-        let window_options = eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default().with_inner_size([15.0, 130.0]),
-            window_builder: Some(Box::new(|builder: ViewportBuilder| {
-                builder
-                    .with_window_type(egui::X11WindowType::Dialog)
-                    .with_decorations(false)
-            })),
-            ..Default::default()
-        };
 
         let device = blight::Device::new(None).expect("Failed to get device");
         let curr_brightness: u8 = device.current_percent().round() as u8;
@@ -115,10 +107,24 @@ async fn brightness_slider(socket_path: PathBuf) {
         s.spawn_cancellable(device_write_thread(brightness.signal(), device), || Ok(()));
         s.spawn_cancellable(server_thread(&socket_path), || Ok(()));
 
-        let app = BrightnessApp::new(brightness);
-        eframe::run_native("Brightness", window_options, Box::new(|_cc| Box::new(app))).unwrap();
+        run_gui(brightness);
+
         s.cancel();
     });
+}
+
+fn run_gui(brightness: signal::Mutable<u8>) {
+    let app = BrightnessApp::new(brightness);
+    let window_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([15.0, 130.0]),
+        window_builder: Some(Box::new(|builder: ViewportBuilder| {
+            builder
+                .with_window_type(egui::X11WindowType::Dialog)
+                .with_decorations(false)
+        })),
+        ..Default::default()
+    };
+    eframe::run_native("Brightness", window_options, Box::new(|_cc| Box::new(app))).unwrap();
 }
 
 #[derive(Debug)]
