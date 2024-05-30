@@ -95,7 +95,7 @@ async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -
         match recv_buf.as_str() {
             "ping" => {
                 brightness.set(100);
-            },
+            }
             _ => {}
         }
     }
@@ -103,7 +103,6 @@ async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -
 
 async fn brightness_slider(socket_path: PathBuf) {
     let ((), _outputs) = async_scoped::TokioScope::scope_and_block(|s| {
-
         let device = blight::Device::new(None).expect("Failed to get device");
         let curr_brightness: u8 = device.current_percent().round() as u8;
         println!("Initial brightness: {}", curr_brightness);
@@ -150,26 +149,36 @@ impl BrightnessApp {
     }
 
     fn handle_input(&mut self, ctx: &egui::Context) {
+        // can't use ctx inside input closure
         let quit = ctx.input(|i| i.key_pressed(egui::Key::Q) || i.key_pressed(egui::Key::Escape));
         if quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        // arrow key control
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-            self.add_target_brightness(5);
-        }
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-            self.add_target_brightness(-5);
-        }
+        ctx.input(|i| {
+            // arrow key control
+            if i.key_pressed(egui::Key::ArrowUp) {
+                self.add_target_brightness(5);
+            }
+            if i.key_pressed(egui::Key::ArrowDown) {
+                self.add_target_brightness(-5);
+            }
 
-        // pgup pgdown control
-        if ctx.input(|i| i.key_pressed(egui::Key::PageUp)) {
-            self.add_target_brightness(20);
-        }
-        if ctx.input(|i| i.key_pressed(egui::Key::PageDown)) {
-            self.add_target_brightness(-20);
-        }
+            // pgup pgdown control
+            if i.key_pressed(egui::Key::PageUp) {
+                self.add_target_brightness(20);
+            }
+            if i.key_pressed(egui::Key::PageDown) {
+                self.add_target_brightness(-20);
+            }
+
+            // mouse wheel control
+            if i.raw_scroll_delta.y > 0.0 {
+                self.add_target_brightness(5);
+            } else if i.raw_scroll_delta.y < 0.0 {
+                self.add_target_brightness(-5);
+            }
+        });
     }
 }
 
