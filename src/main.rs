@@ -42,13 +42,64 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn usage() {
+    println!("Usage: {} [inc|dec|set] <value>", PROG_NAME);
+    std::process::exit(1);
+}
+
+fn cli_invalid_args() -> ! {
+    println!("gui is already running, and no valid command was given.");
+    println!("Exiting...");
+    std::process::exit(1);
+}
+
 async fn brightness_slider_client(socket_path: &PathBuf) -> Result<()> {
     let mut client = UnixStream::connect(socket_path).await?;
 
-    client.write_all(b"ping").await?;
-    println!("Sent ping to server. Exiting.");
+    // get args, skipping the first arg which is the program name
+    let args: Vec<String> = std::env::args().skip(1).collect();
 
-    Ok(())
+    // parse args
+    if args.len() <= 1 {
+        cli_invalid_args();
+    } else if args.len() == 2 {
+        match args[0].as_str() {
+            "inc" => {
+                // ensure the second arg is a number
+                let Ok(_) = args[1].parse::<u8>() else {
+                    usage();
+                    std::process::exit(1);
+                };
+                client
+                    .write_all(format!("inc {}", args[1]).as_bytes())
+                    .await?;
+            }
+            "dec" => {
+                // ensure the second arg is a number
+                let Ok(_) = args[1].parse::<u8>() else {
+                    usage();
+                    std::process::exit(1);
+                };
+                client
+                    .write_all(format!("dec {}", args[1]).as_bytes())
+                    .await?;
+            }
+            "set" => {
+                // ensure the second arg is a number
+                let Ok(_) = args[1].parse::<u8>() else {
+                    usage();
+                    std::process::exit(1);
+                };
+                client
+                    .write_all(format!("set {}", args[1]).as_bytes())
+                    .await?;
+            }
+            _ => cli_invalid_args(),
+        }
+        Ok(())
+    } else {
+        cli_invalid_args();
+    }
 }
 
 fn write_brightness_to_device(
@@ -61,10 +112,7 @@ fn write_brightness_to_device(
     device.write_value(value)
 }
 
-async fn device_write_thread(
-    rx: signal::MutableSignal<u8>,
-    mut device: blight::Device,
-) {
+async fn device_write_thread(rx: signal::MutableSignal<u8>, mut device: blight::Device) {
     rx.for_each(|target_brightness| {
         write_brightness_to_device(&mut device, target_brightness)
             .expect("Failed to write brightness");
@@ -109,10 +157,13 @@ async fn brightness_slider(socket_path: PathBuf) {
         let brightness = signal::Mutable::new(curr_brightness);
         let brightness_signal = brightness.signal();
 
-        s.spawn_cancellable(async {
-            device_write_thread(brightness_signal, device).await;
-            Ok(())
-        }, || Ok(()));
+        s.spawn_cancellable(
+            async {
+                device_write_thread(brightness_signal, device).await;
+                Ok(())
+            },
+            || Ok(()),
+        );
         s.spawn_cancellable(server_thread(&socket_path, brightness.clone()), || Ok(()));
 
         run_gui(brightness.clone());
@@ -120,4 +171,3 @@ async fn brightness_slider(socket_path: PathBuf) {
         s.cancel();
     });
 }
-
