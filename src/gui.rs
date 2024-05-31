@@ -1,6 +1,7 @@
-use futures_signals::signal;
+use crate::mutable_ext::MutableExt;
 use eframe::egui;
 use egui::ViewportBuilder;
+use futures_signals::signal;
 
 pub fn run_gui(brightness: signal::Mutable<u8>) {
     let app = BrightnessApp::new(brightness);
@@ -16,18 +17,14 @@ pub fn run_gui(brightness: signal::Mutable<u8>) {
     eframe::run_native("Brightness", window_options, Box::new(|_cc| Box::new(app))).unwrap();
 }
 
-#[derive(Debug)]
-struct BrightnessApp {
-    // percentage
-    brightness: signal::Mutable<u8>,
-}
-
 fn add_brightness(brightness: u8, delta: i16) -> u8 {
     (brightness as i16 + delta).clamp(0, 100) as u8
 }
 
-fn add_brightness_mut(brightness: &mut signal::Mutable<u8>, delta: i16) {
-    brightness.replace_with(|b| add_brightness(*b, delta));
+#[derive(Debug)]
+struct BrightnessApp {
+    // percentage
+    brightness: signal::Mutable<u8>,
 }
 
 impl BrightnessApp {
@@ -45,25 +42,25 @@ impl BrightnessApp {
         ctx.input(|i| {
             // arrow key control
             if i.key_pressed(egui::Key::ArrowUp) {
-                add_brightness_mut(&mut self.brightness, 5);
+                self.brightness.replace_pure(|b| add_brightness(b, 5));
             }
             if i.key_pressed(egui::Key::ArrowDown) {
-                add_brightness_mut(&mut self.brightness, -5);
+                self.brightness.replace_pure(|b| add_brightness(b, -5));
             }
 
             // pgup pgdown control
             if i.key_pressed(egui::Key::PageUp) {
-                add_brightness_mut(&mut self.brightness, 20);
+                self.brightness.replace_pure(|b| add_brightness(b, 20));
             }
             if i.key_pressed(egui::Key::PageDown) {
-                add_brightness_mut(&mut self.brightness, -20);
+                self.brightness.replace_pure(|b| add_brightness(b, -20));
             }
 
             // mouse wheel control
             if i.raw_scroll_delta.y > 0.0 {
-                add_brightness_mut(&mut self.brightness, 5);
+                self.brightness.replace_pure(|b| add_brightness(b, 5));
             } else if i.raw_scroll_delta.y < 0.0 {
-                add_brightness_mut(&mut self.brightness, -5);
+                self.brightness.replace_pure(|b| add_brightness(b, -5));
             }
         });
     }

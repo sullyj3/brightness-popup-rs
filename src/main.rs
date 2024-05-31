@@ -13,6 +13,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
 mod gui;
+mod mutable_ext;
 use crate::gui::run_gui;
 
 const PROG_NAME: &str = "brightness-slider";
@@ -101,7 +102,7 @@ async fn device_write_thread(rx: signal::MutableSignal<u8>, mut device: blight::
     .await;
 }
 
-async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -> io::Result<()> {
+async fn server_thread(socket_path: &PathBuf, _brightness: signal::Mutable<u8>) -> io::Result<()> {
     println!("Starting server thread");
 
     // Ensure no stale socket file
