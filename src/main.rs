@@ -108,6 +108,7 @@ async fn brightness_slider(socket_path: PathBuf) {
         let curr_brightness: u8 = device.current_percent().round() as u8;
         println!("Initial brightness: {}", curr_brightness);
 
+        // most important part of the program
         let brightness = signal::Mutable::new(curr_brightness);
 
         s.spawn_cancellable(device_write_thread(brightness.signal(), device), || Ok(()));
