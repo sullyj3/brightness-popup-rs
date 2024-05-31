@@ -22,14 +22,17 @@ struct BrightnessApp {
     brightness: signal::Mutable<u8>,
 }
 
+fn add_brightness(brightness: u8, delta: i16) -> u8 {
+    (brightness as i16 + delta).clamp(0, 100) as u8
+}
+
+fn add_brightness_mut(brightness: &mut signal::Mutable<u8>, delta: i16) {
+    brightness.replace_with(|b| add_brightness(*b, delta));
+}
+
 impl BrightnessApp {
     fn new(brightness: signal::Mutable<u8>) -> Self {
         Self { brightness }
-    }
-
-    fn add_target_brightness(&mut self, delta: i16) {
-        self.brightness
-            .replace_with(|b| (*b as i16 + delta).clamp(0, 100) as u8);
     }
 
     fn handle_input(&mut self, ctx: &egui::Context) {
@@ -42,25 +45,25 @@ impl BrightnessApp {
         ctx.input(|i| {
             // arrow key control
             if i.key_pressed(egui::Key::ArrowUp) {
-                self.add_target_brightness(5);
+                add_brightness_mut(&mut self.brightness, 5);
             }
             if i.key_pressed(egui::Key::ArrowDown) {
-                self.add_target_brightness(-5);
+                add_brightness_mut(&mut self.brightness, -5);
             }
 
             // pgup pgdown control
             if i.key_pressed(egui::Key::PageUp) {
-                self.add_target_brightness(20);
+                add_brightness_mut(&mut self.brightness, 20);
             }
             if i.key_pressed(egui::Key::PageDown) {
-                self.add_target_brightness(-20);
+                add_brightness_mut(&mut self.brightness, -20);
             }
 
             // mouse wheel control
             if i.raw_scroll_delta.y > 0.0 {
-                self.add_target_brightness(5);
+                add_brightness_mut(&mut self.brightness, 5);
             } else if i.raw_scroll_delta.y < 0.0 {
-                self.add_target_brightness(-5);
+                add_brightness_mut(&mut self.brightness, -5);
             }
         });
     }

@@ -57,7 +57,7 @@ enum Command {
     Set(u8),
 }
 
-fn parse_command_from_args(command: Vec<String>) -> Option<Command> {
+fn parse_command_from_args(command: &[String]) -> Option<Command> {
     if command.len() != 2 {
         return None;
     }
@@ -75,7 +75,7 @@ async fn brightness_slider_client(socket_path: &PathBuf) -> io::Result<()> {
 
     // skip the program name
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let Some(command) = parse_command_from_args(args) else {
+    let Some(command) = parse_command_from_args(&args) else {
         cli_invalid_args();
     };
     let bytes = serde_json::to_vec(&command).expect("Failed to serialize command");
