@@ -64,16 +64,13 @@ fn write_brightness_to_device(
 async fn device_write_thread(
     rx: signal::MutableSignal<u8>,
     mut device: blight::Device,
-) -> Result<()> {
+) {
     rx.for_each(|target_brightness| {
         write_brightness_to_device(&mut device, target_brightness)
             .expect("Failed to write brightness");
         async {}
     })
     .await;
-
-    // gui has closed, exit
-    Ok(())
 }
 
 async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -> Result<()> {
@@ -110,8 +107,12 @@ async fn brightness_slider(socket_path: PathBuf) {
 
         // most important part of the program
         let brightness = signal::Mutable::new(curr_brightness);
+        let brightness_signal = brightness.signal();
 
-        s.spawn_cancellable(device_write_thread(brightness.signal(), device), || Ok(()));
+        s.spawn_cancellable(async {
+            device_write_thread(brightness_signal, device).await;
+            Ok(())
+        }, || Ok(()));
         s.spawn_cancellable(server_thread(&socket_path, brightness.clone()), || Ok(()));
 
         run_gui(brightness.clone());
