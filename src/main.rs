@@ -3,8 +3,10 @@ use blight;
 use dirs;
 use fs2::FileExt;
 use futures_signals::signal::{self, SignalExt};
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::fs::File;
-use std::io::Result;
+use std::io;
 use std::path::PathBuf;
 use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,7 +18,7 @@ use crate::gui::run_gui;
 const PROG_NAME: &str = "brightness-slider";
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> io::Result<()> {
     let runtime_dir = dirs::runtime_dir()
         .expect("Failed to get runtime dir")
         .join(PROG_NAME);
@@ -42,64 +44,42 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn usage() {
-    println!("Usage: {} [inc|dec|set] <value>", PROG_NAME);
-    std::process::exit(1);
-}
-
 fn cli_invalid_args() -> ! {
     println!("gui is already running, and no valid command was given.");
     println!("Exiting...");
     std::process::exit(1);
 }
 
-async fn brightness_slider_client(socket_path: &PathBuf) -> Result<()> {
+#[derive(Debug, Serialize, Deserialize)]
+enum Command {
+    Inc(u8),
+    Dec(u8),
+    Set(u8),
+}
+
+fn parse_command_from_args(command: Vec<String>) -> Option<Command> {
+    if command.len() != 2 {
+        return None;
+    }
+    let value = command[1].parse::<u8>().ok()?;
+    match command[0].as_str() {
+        "inc" => Some(Command::Inc(value)),
+        "dec" => Some(Command::Dec(value)),
+        "set" => Some(Command::Set(value)),
+        _ => None,
+    }
+}
+
+async fn brightness_slider_client(socket_path: &PathBuf) -> io::Result<()> {
     let mut client = UnixStream::connect(socket_path).await?;
 
-    // get args, skipping the first arg which is the program name
+    // skip the program name
     let args: Vec<String> = std::env::args().skip(1).collect();
-
-    // parse args
-    if args.len() <= 1 {
+    let Some(command) = parse_command_from_args(args) else {
         cli_invalid_args();
-    } else if args.len() == 2 {
-        match args[0].as_str() {
-            "inc" => {
-                // ensure the second arg is a number
-                let Ok(_) = args[1].parse::<u8>() else {
-                    usage();
-                    std::process::exit(1);
-                };
-                client
-                    .write_all(format!("inc {}", args[1]).as_bytes())
-                    .await?;
-            }
-            "dec" => {
-                // ensure the second arg is a number
-                let Ok(_) = args[1].parse::<u8>() else {
-                    usage();
-                    std::process::exit(1);
-                };
-                client
-                    .write_all(format!("dec {}", args[1]).as_bytes())
-                    .await?;
-            }
-            "set" => {
-                // ensure the second arg is a number
-                let Ok(_) = args[1].parse::<u8>() else {
-                    usage();
-                    std::process::exit(1);
-                };
-                client
-                    .write_all(format!("set {}", args[1]).as_bytes())
-                    .await?;
-            }
-            _ => cli_invalid_args(),
-        }
-        Ok(())
-    } else {
-        cli_invalid_args();
-    }
+    };
+    let bytes = serde_json::to_vec(&command).expect("Failed to serialize command");
+    client.write_all(&bytes).await
 }
 
 fn write_brightness_to_device(
@@ -121,7 +101,7 @@ async fn device_write_thread(rx: signal::MutableSignal<u8>, mut device: blight::
     .await;
 }
 
-async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -> Result<()> {
+async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -> io::Result<()> {
     println!("Starting server thread");
 
     // Ensure no stale socket file
@@ -133,17 +113,21 @@ async fn server_thread(socket_path: &PathBuf, brightness: signal::Mutable<u8>) -
 
     let listener = UnixListener::bind(socket_path)?;
     println!("Listening on socket: {}", socket_path.display());
+    let mut recv_buf = String::new();
     loop {
         let (mut stream, _addr) = listener.accept().await?;
-        let mut recv_buf = String::new();
+        recv_buf.clear();
         stream.read_to_string(&mut recv_buf).await?;
-        println!("Received command from client: {}", recv_buf);
-        match recv_buf.as_str() {
-            "ping" => {
-                brightness.set(100);
+
+        let command: Command = match serde_json::from_str(&recv_buf) {
+            Ok(c) => c,
+            Err(e) => {
+                println!("Failed to parse command: {:?}", e);
+                continue;
             }
-            _ => {}
-        }
+        };
+
+        println!("Received command from client: {:?}", command);
     }
 }
 
