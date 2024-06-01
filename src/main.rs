@@ -13,7 +13,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 
 mod gui;
-mod mutable_ext;
 use crate::gui::run_gui;
 
 const PROG_NAME: &str = "brightness-slider";

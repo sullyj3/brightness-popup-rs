@@ -1,4 +1,3 @@
-use crate::mutable_ext::MutableExt;
 use eframe::egui;
 use egui::ViewportBuilder;
 use futures_signals::signal;
@@ -42,25 +41,26 @@ impl BrightnessApp {
         ctx.input(|i| {
             // arrow key control
             if i.key_pressed(egui::Key::ArrowUp) {
-                self.brightness.replace_pure(|b| add_brightness(b, 5));
+                self.brightness.replace_with(|&mut b| add_brightness(b, 5));
             }
             if i.key_pressed(egui::Key::ArrowDown) {
-                self.brightness.replace_pure(|b| add_brightness(b, -5));
+                self.brightness.replace_with(|&mut b| add_brightness(b, -5));
             }
 
             // pgup pgdown control
             if i.key_pressed(egui::Key::PageUp) {
-                self.brightness.replace_pure(|b| add_brightness(b, 20));
+                self.brightness.replace_with(|&mut b| add_brightness(b, 20));
             }
             if i.key_pressed(egui::Key::PageDown) {
-                self.brightness.replace_pure(|b| add_brightness(b, -20));
+                self.brightness
+                    .replace_with(|&mut b| add_brightness(b, -20));
             }
 
             // mouse wheel control
             if i.raw_scroll_delta.y > 0.0 {
-                self.brightness.replace_pure(|b| add_brightness(b, 5));
+                self.brightness.replace_with(|&mut b| add_brightness(b, 5));
             } else if i.raw_scroll_delta.y < 0.0 {
-                self.brightness.replace_pure(|b| add_brightness(b, -5));
+                self.brightness.replace_with(|&mut b| add_brightness(b, -5));
             }
         });
     }
