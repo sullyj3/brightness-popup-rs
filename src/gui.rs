@@ -1,6 +1,7 @@
 use eframe::egui;
 use egui::ViewportBuilder;
 use futures_signals::signal;
+use crate::brightness::add_brightness;
 
 pub fn run_gui(brightness: signal::Mutable<u8>) {
     let app = BrightnessApp::new(brightness);
@@ -14,10 +15,6 @@ pub fn run_gui(brightness: signal::Mutable<u8>) {
         ..Default::default()
     };
     eframe::run_native("Brightness", window_options, Box::new(|_cc| Box::new(app))).unwrap();
-}
-
-fn add_brightness(brightness: u8, delta: i16) -> u8 {
-    (brightness as i16 + delta).clamp(0, 100) as u8
 }
 
 #[derive(Debug)]
